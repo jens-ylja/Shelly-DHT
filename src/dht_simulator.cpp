@@ -8,13 +8,23 @@
 
 #define DHT_TRIGGER_MIN_US 500UL
 #define DHT_TRIGGER_MAX_US 20000UL
-#ifndef DHT_SAFE_DELAY_AFTER_SHELLY_MS
-#define DHT_SAFE_DELAY_AFTER_SHELLY_MS 300UL
+#ifndef DHT_READ_INTERVAL_MS
+#define DHT_READ_INTERVAL_MS 10000UL
+#endif
+#ifndef DHT_SHELLY_GRID_MS
+#define DHT_SHELLY_GRID_MS 2000UL
+#endif
+#ifndef DHT_READ_WINDOW_START_MS
+#define DHT_READ_WINDOW_START_MS 120UL
+#endif
+#ifndef DHT_READ_WINDOW_END_MS
+#define DHT_READ_WINDOW_END_MS 1600UL
 #endif
 #define DHT_INVALID_TEMP10 -402
 #define DHT_INVALID_HUM10 2
 
 static volatile uint32_t lastTriggerMs = 0;
+static volatile bool shellySeen = false;
 static volatile bool shellyBusy = false;
 static volatile bool shellyCollision = false;
 static volatile ShellyClock lowStartTicks = 0;
@@ -103,8 +113,9 @@ ISR(SHELLY_ISR_VECTOR) {
   const uint32_t lowDuration = hwShellyElapsed(lowStartTicks, lowEndTicks);
   if (elapsedMs <= DHT_TRIGGER_MAX_US / 1000UL + 1UL &&
       lowDuration >= DHT_TRIGGER_MIN_US && lowDuration <= DHT_TRIGGER_MAX_US) {
-    lastTriggerMs = lowEndMs;
     sendResponse();
+    lastTriggerMs = lowEndMs;
+    shellySeen = true;
   } else {
     shellyBusy = false;
   }
@@ -117,10 +128,19 @@ void dhtSimulatorInit() {
 }
 
 bool dhtSimulatorClaimReadWindow(uint32_t nowMs) {
+  (void)nowMs;
   const uint8_t savedSreg = SREG;
   cli();
-  const bool ready = !shellyBusy &&
-    nowMs - lastTriggerMs >= DHT_SAFE_DELAY_AFTER_SHELLY_MS;
+  const uint32_t claimTimeMs = millis();
+  const uint32_t sinceShellyMs = claimTimeMs - lastTriggerMs;
+  bool inReadWindow = !shellySeen || sinceShellyMs >= DHT_READ_INTERVAL_MS;
+  if (shellySeen && !inReadWindow) {
+    uint32_t phaseMs = sinceShellyMs;
+    while (phaseMs >= DHT_SHELLY_GRID_MS) phaseMs -= DHT_SHELLY_GRID_MS;
+    inReadWindow = phaseMs >= DHT_READ_WINDOW_START_MS &&
+      phaseMs <= DHT_READ_WINDOW_END_MS;
+  }
+  const bool ready = !shellyBusy && inReadWindow;
   if (ready) {
     shellyCollision = false;
   }

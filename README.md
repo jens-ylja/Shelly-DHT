@@ -33,7 +33,7 @@ With this, we can decouple the DHT sensors abilities from the Shelly's requireme
 
 ### Known Limitations
 - Of cource, even if the microcontroller answers the Shelly's requests every 2s, the resolution drops to the least common multiple of the both sides sample intervals. This is known and acceptable.
-- The sample intervals of both sides have to be synchronized in a way that they never collide. Since the Shelly's request interval is fixed, the query interval of the DHT has to be dynamically adapted in case a clash becomes reasonable. So the effective resolution of the published meter values is not completely fixed. It may vary by several 100ms.
+- The sample intervals of both sides have to be synchronized in a way that they never collide. The DHT read starts 100–1600 ms after a Shelly transaction, measured against the 2s request grid (including skipped requests). If the 10s read interval expires outside this window, the read is delayed by at most about 500ms. When no Shelly request has been seen for more than 10s, the bridge reads without the window.
 
 ### Implementation hints and decisions
 - For the side of the real DHT sensor, a small custom DHT reader is used instead of a standard library such as `robtillaart/DHTStable`.
