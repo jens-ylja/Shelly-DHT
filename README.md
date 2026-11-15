@@ -29,8 +29,7 @@ In this 2nd solution approach, the microcontroller acts as a bridge between the 
 On one side it querries the DHT sensor for samples in a configurable interval and chaches the returned values.
 On the other side, the controller serves the Shelly's request and returns the cached meter values.
 
-With this, we can decouple the DHT sensors abilities from the Shelly's requirements.
-If this approach is working, we can think about supporting DHT11 sensors too. These have a slightly different protocol than the DHT22 ones and are unsupported by Shelly.
+With this, we can decouple the DHT sensors abilities from the Shelly's requirements. The bridge supports DHT22 and DHT11 sensors; the Shelly always receives DHT22-format frames.
 
 ### Known Limitations
 - Of cource, even if the microcontroller answers the Shelly's requests every 2s, the resolution drops to the least common multiple of the both sides sample intervals. This is known and acceptable.
@@ -41,11 +40,18 @@ If this approach is working, we can think about supporting DHT11 sensors too. Th
   The bridge needs integer values in tenths and tightly controlled timing/collision handling. `robtillaart/DHTStable` uses floating-point values and Arduino I/O calls, which add code size and overhead that are undesirable on the ATtiny85
   and especially when down-sizing to 2 or 4 KB ATtiny 1 series microcontrollers.
   The custom implementation also keeps the sensor protocol and timeouts under direct control.
+- Select the real sensor type with `DHT_SENSOR` in `platformio.ini` build flags: `22` for DHT22 or `11` for DHT11. The setting is independent of the processor target.
 - For the DHT22 simulation side, no library is known. The implemented custom DHT simulator was inspired by [Rob Tillaart's DHT simulator](https://github.com/RobTillaart/DHT_Simulator/tree/master).
+
+### DHT11 support
+
+Select the real sensor type with `DHT_SENSOR` in the `platformio.ini` build flags: `22` for DHT22 or `11` for DHT11. This setting is independent of the processor target. For DHT11, the bridge uses a 20 ms host start pulse and converts the temperature and humidity bytes to its tenths-based internal values. The nominal DHT11 resolution is 1 °C and 1% RH, and many sensors report zero fractional bytes. However, the DHT11 format includes fractional bytes, and the tested sensor sends nonzero temperature fractions: a logic-analyzer capture showed 0.5 °C, and a further test showed 0.1 °C steps. The bridge preserves these fractions, but fractional readings may depend on the sensor variant and are not guaranteed for all DHT11 sensors. Humidity was observed as an integer in these tests.
+
+The DHT11's specified operating range, where its accuracy tolerances apply, is 0–50 °C and 20–90% RH. These are not enforced as hard validity limits by the bridge; readings outside this range are passed through, but the specified tolerances no longer apply.
 
 ### DHT error states and reported values
 
-The bridge reports these values to the Shelly as valid DHT22 frames (including a calculated checksum):
+The bridge reports these values to the Shelly as valid DHT22 frames (including a calculated checksum). The error-indication values in this table are also used when the real sensor is a DHT11, even though those values are outside the DHT11's specified operating range:
 
 | State | Temperature | Humidity | Behavior |
 |---|---:|---:|---|

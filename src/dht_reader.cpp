@@ -6,6 +6,18 @@
 
 #include "hw.h"
 
+#ifndef DHT_SENSOR
+#error "DHT_SENSOR must be set in platformio.ini build_flags (11 or 22)"
+#elif DHT_SENSOR != 11 && DHT_SENSOR != 22
+#error "DHT_SENSOR must be 11 or 22"
+#endif
+
+#if DHT_SENSOR == 11
+#define DHT_START_LOW_MS 20
+#else
+#define DHT_START_LOW_MS 2
+#endif
+
 #ifdef DHT_DEBUG_SERIAL
 DhtDebug dhtDebug;
 #endif
@@ -33,7 +45,7 @@ DhtResult dhtRead(int16_t &temp10, uint16_t &hum10,
   if (cancel) return DHT_TIMEOUT;
 
   hwSensorPullLow();
-  _delay_ms(2);
+  _delay_ms(DHT_START_LOW_MS);
   hwSensorRelease();
 
   if (!waitForLevel(false, cancel) || !waitForLevel(true, cancel) ||
@@ -76,11 +88,18 @@ DhtResult dhtRead(int16_t &temp10, uint16_t &hum10,
     return DHT_CHECKSUM;
   }
 
+#if DHT_SENSOR == 11
+  hum10 = static_cast<uint16_t>(bytes[0]) * 10 + bytes[1];
+  const int16_t absoluteTemp =
+    static_cast<int16_t>(bytes[2] & 0x7F) * 10 + bytes[3];
+  temp10 = (bytes[2] & 0x80) ? -absoluteTemp : absoluteTemp;
+#else
   hum10 = (static_cast<uint16_t>(bytes[0]) << 8) | bytes[1];
   const uint16_t absoluteTemp =
     (static_cast<uint16_t>(bytes[2] & 0x7F) << 8) | bytes[3];
   temp10 = (bytes[2] & 0x80) ? -static_cast<int16_t>(absoluteTemp)
     : static_cast<int16_t>(absoluteTemp);
+#endif
 
   return DHT_OK;
 }
