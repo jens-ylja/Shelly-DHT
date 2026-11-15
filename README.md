@@ -103,3 +103,10 @@ The ATtiny814 build provides temporary USART0 diagnostics at 115200 baud, 8N1, o
 - The development uses VS Code and PlatformIO with the `atmelavr` platform for ATtiny85 and `atmelmegaavr` for ATtiny 1 devices.
 - The DHT line protocol has strict timing restrictions and requires a clock speed of at least 8 MHz. At 3.3 V, the ATtiny 1 series supports up to 10 MHz, so these targets use 8 MHz. The ATtiny 1 OSCCFG fuse must be set to select the 16 MHz oscillator; the core then applies its divide-by-two clock prescaler.
 - DHT pulse widths are measured directly from hardware timer counters: Timer0 on the ATtiny85 and TCA0 on the ATtiny412/814. On the ATtiny1 targets, TCA0 is taken over for sensor and Shelly-trigger timing while `millis()` remains on TCD0.
+
+### Notes
+- The code was created with heavy support of Claude Code. Please don't blame me too much if you don't like the programming style.
+- The code was verified as working for both ATtiny85 and ATtiny814 processors and both DHT22 and DHT11 sensors.
+- Short term tests (max 20 minutes) were recorded by an [LA5016 Logic Analyzer](https://www.inno-maker.com/product/la5016/) and the wave timing verified for both sides of the communication (incl. sync between them).
+- Mid term tests (~1d) have been run with an ATtiny814 paired with the cheap DHT22 (the one referred to in "The Problem" as not capable for direct connection to the Shelly). The test used the default 10s rate for the DHT22.
+- The processors have been added completely "naked" without any other surrounding components - except the pull up for the DHT data line (and for the Rx line on ATtiny814 with UART debugging enabled).
