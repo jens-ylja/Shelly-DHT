@@ -3,9 +3,14 @@
 #include <util/delay.h>
 
 #include "dht_reader.h"
+#include "hw.h"
 
-#define DHT_DATA_PIN PB2
-#define DHT_DATA_MASK _BV(DHT_DATA_PIN)
+#ifdef DHT_DEBUG_SERIAL
+#ifndef DHT_DEBUG_BAUD
+#define DHT_DEBUG_BAUD 115200
+#endif
+#endif
+
 #define DHT_TRIGGER_MIN_US 500UL
 #define DHT_TRIGGER_MAX_US 20000UL
 #ifndef DHT_READ_INTERVAL_MS
@@ -27,17 +32,52 @@ volatile uint32_t lastTriggerMs = 0;
 volatile bool shellyBusy = false;
 volatile bool shellyCollision = false;
 
-static volatile uint32_t lowStartUs = 0;
+static volatile ShellyClock lowStartTicks = 0;
+static volatile uint32_t lowStartMs = 0;
 static uint8_t frame[5];
 
+#ifdef DHT_DEBUG_SERIAL
+static void printHexByte(uint8_t value) {
+  if (value < 0x10) Serial.print('0');
+  Serial.print(value, HEX);
+}
+
+static void printDhtDebug(DhtResult result, uint16_t failures) {
+  Serial.print(F("R="));
+  switch (result) {
+    case DHT_OK: Serial.print(F("OK")); break;
+    case DHT_TIMEOUT: Serial.print(F("TIMEOUT")); break;
+    case DHT_CHECKSUM: Serial.print(F("CHECKSUM")); break;
+    case DHT_CANCELLED: Serial.print(F("CANCELLED")); break;
+  }
+  Serial.print(F(" bits="));
+  Serial.print(dhtDebug.bitsRead);
+  Serial.print(F(" b="));
+  for (uint8_t i = 0; i < 5; ++i) {
+    if (i) Serial.write(' ');
+    printHexByte(dhtDebug.bytes[i]);
+  }
+  Serial.print(F(" sum="));
+  printHexByte(static_cast<uint8_t>(dhtDebug.bytes[0] + dhtDebug.bytes[1] +
+                                    dhtDebug.bytes[2] + dhtDebug.bytes[3]));
+  Serial.print(F(" fail="));
+  Serial.println(failures);
+
+  Serial.print(F("t_us="));
+  for (uint8_t i = 0; i < dhtDebug.bitsRead; ++i) {
+    if (i) Serial.write(',');
+    Serial.print(static_cast<uint16_t>(dhtDebug.highTicks[i]) * DHT_TIMER_TICK_US);
+  }
+  Serial.println();
+}
+#endif
+
 static inline void pullDataLow() {
-  PORTB &= ~DHT_DATA_MASK;
-  DDRB |= DHT_DATA_MASK;
+  hwShellyPullLow();
 }
 
 static inline void releaseDataLine() {
-  DDRB &= ~DHT_DATA_MASK;
-  PORTB &= ~DHT_DATA_MASK;
+  hwShellyRelease();
 }
 
 static void buildFrame(int16_t temp, uint16_t rh, uint8_t output[5]) {
@@ -71,12 +111,12 @@ static void publishFrame(int16_t temp, uint16_t rh) {
 static void sendByte(uint8_t value) {
   for (uint8_t mask = 0x80; mask != 0; mask >>= 1) {
     pullDataLow();
-    _delay_us(49);
+    _delay_us(SHELLY_BIT_LOW_US);
     releaseDataLine();
     if (value & mask) {
-      _delay_us(68);
+      _delay_us(SHELLY_BIT_ONE_HIGH_US);
     } else {
-      _delay_us(24);
+      _delay_us(SHELLY_BIT_ZERO_HIGH_US);
     }
   }
 }
@@ -85,38 +125,44 @@ static void sendResponse() {
   const uint8_t savedSreg = SREG;
   cli();
 
-  GIMSK &= ~_BV(INT0);
-  _delay_us(20);
+  hwShellyIrqDisable();
+  _delay_us(SHELLY_START_DELAY_US);
   pullDataLow();
-  _delay_us(80);
+  _delay_us(SHELLY_ACK_LOW_US);
   releaseDataLine();
-  _delay_us(80);
+  _delay_us(SHELLY_ACK_HIGH_US);
 
   for (uint8_t i = 0; i < 5; ++i) {
     sendByte(frame[i]);
   }
 
   pullDataLow();
-  _delay_us(50);
+  _delay_us(SHELLY_END_LOW_US);
   releaseDataLine();
 
-  GIFR = _BV(INTF0);
-  GIMSK |= _BV(INT0);
+  hwShellyIrqAcknowledge();
+  hwShellyIrqClearEnable();
   shellyBusy = false;
   SREG = savedSreg;
 }
 
-ISR(INT0_vect) {
-  if (!(PINB & DHT_DATA_MASK)) {
-    lowStartUs = micros();
+ISR(SHELLY_ISR_VECTOR) {
+  hwShellyIrqAcknowledge();
+  if (!hwShellyHigh()) {
+    lowStartTicks = hwShellyClock();
+    lowStartMs = millis();
     shellyBusy = true;
     shellyCollision = true;
     return;
   }
 
-  const uint32_t lowDuration = micros() - lowStartUs;
-  if (lowDuration >= DHT_TRIGGER_MIN_US && lowDuration <= DHT_TRIGGER_MAX_US) {
-    lastTriggerMs = millis();
+  const ShellyClock lowEndTicks = hwShellyClock();
+  const uint32_t lowEndMs = millis();
+  const uint32_t elapsedMs = lowEndMs - lowStartMs;
+  const uint32_t lowDuration = hwShellyElapsed(lowStartTicks, lowEndTicks);
+  if (elapsedMs <= DHT_TRIGGER_MAX_US / 1000UL + 1UL &&
+      lowDuration >= DHT_TRIGGER_MIN_US && lowDuration <= DHT_TRIGGER_MAX_US) {
+    lastTriggerMs = lowEndMs;
     sendResponse();
   } else {
     shellyBusy = false;
@@ -124,21 +170,43 @@ ISR(INT0_vect) {
 }
 
 void setup() {
+  hwTimerInit();
+#ifdef DHT_DEBUG_SERIAL
+  Serial.begin(DHT_DEBUG_BAUD, SERIAL_TX_ONLY | SERIAL_8N1);
+#endif
   releaseDataLine();
   dhtReaderInit();
+#ifdef DHT_DEBUG_SERIAL
+  Serial.println(F("BOOT"));
+  Serial.println(hwShellyHigh() ? F("PA2=1") : F("PA2=0"));
+  Serial.flush();
+#endif
   publishFrame(DHT_DEFAULT_TEMP10, DHT_DEFAULT_HUM10);
 
-  MCUCR |= _BV(ISC00);
-  GIMSK |= _BV(INT0);
+  hwShellyIrqInit();
   sei();
 }
 
 void loop() {
   static uint32_t lastDhtAttemptMs = 0;
+#ifdef DHT_DEBUG_SERIAL
+  static uint32_t lastDebugHeartbeatMs = 0;
+#endif
   static uint16_t consecutiveFailures = 0;
   static DhtResult lastFailure = DHT_TIMEOUT;
 
   const uint32_t now = millis();
+#ifdef DHT_DEBUG_SERIAL
+  if (now - lastDebugHeartbeatMs >= 1000UL) {
+    lastDebugHeartbeatMs = now;
+    Serial.print(F("HB ms="));
+    Serial.print(now);
+    Serial.print(F(" PA2="));
+    Serial.print(hwShellyHigh() ? '1' : '0');
+    Serial.print(F(" busy="));
+    Serial.println(shellyBusy ? '1' : '0');
+  }
+#endif
   const uint8_t savedSreg = SREG;
   cli();
   const bool readyToRead = !shellyBusy &&
@@ -163,6 +231,12 @@ void loop() {
   SREG = resultSreg;
 
   if (collision || result == DHT_CANCELLED) return;
+
+#ifdef DHT_DEBUG_SERIAL
+  const uint16_t debugFailures = result == DHT_OK ? 0 :
+    (consecutiveFailures < 65535 ? consecutiveFailures + 1 : consecutiveFailures);
+  printDhtDebug(result, debugFailures);
+#endif
 
   if (result == DHT_OK) {
     consecutiveFailures = 0;

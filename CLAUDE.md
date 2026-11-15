@@ -37,6 +37,6 @@ If this approach is working, we can think about supporting DHT11 sensors too. Th
 - The microcontroller has to be powered from the Shelly Add On as the DHT sensor is. The Shelly Add On provides 3,3V and a maximum of 15mA. The DHT22 draws about 1-2mA. The microcontroller shouldn't draw more than 5mA to safely stay below the limit.
 - The microcontroller should be an ATtiny85 (for the prototype phase) or later on one of the new ATtiny 0 or 1 series with 8 Pins.
 - The development has to be done with VS Code and PlatformIO using the `atmelavr` platform and the `arduino` framework for ATtiny85 (`atmelmegaavr` platform for the ATtiny 0/1 series devices).
-- For accessing the DHT sensor there are libraries available (e.g. `robtillaart/DHTStable`). Maybe they can be used, maybe not.
+- A small custom DHT reader is used instead of a standard library such as `robtillaart/DHTStable`: the bridge needs integer values in tenths and tightly controlled timing/collision handling. DHTStable uses floating-point values and Arduino I/O calls, which add code size and overhead that are undesirable on the ATtiny85 and especially the later 4 KB ATtiny412/414. The custom implementation also keeps the sensor protocol and timeouts under direct control.
 - For the DHT22 simulation side, no library is known to me.
 - The DHT line protocol has strict timing restrictions which require the ATtiny to run with a clock speed of at least 8MHz to met them.

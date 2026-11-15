@@ -58,8 +58,42 @@ The bridge reports these values to the Shelly as valid DHT22 frames (including a
 
 Temperature and humidity are validated independently, so a frame may contain both invalid-value markers if both measurements are out of range. The startup default is used until a sensor read succeeds. Read failures share one consecutive-failure counter; each failure updates the remembered cause, and the corresponding error value is published once the count exceeds `DHT_MAX_FAILED_INTERVALS`. A successful reading resets the counter and updates the frame immediately. Shelly-triggered cancellations do not count as sensor failures.
 
+### ATtiny85 pin assignment
+
+The table uses the physical pin numbers of the 8-pin ATtiny85 package:
+
+| Physical pin | ATtiny85 pin | Connection | Why this pin is used |
+|---:|---|---|---|
+| 1 | PB5 / RESET | RESET | Reserved for reset and ISP programming. |
+| 2 | PB3 | DHT sensor data | General-purpose GPIO for the real DHT data line; does not use the Shelly interrupt input. |
+| 3 | PB4 | Reserved | Kept available for a possible future DHT power-control connection. |
+| 4 | GND | Ground | Common ground for the microcontroller, Shelly Add On, and sensor. |
+| 5 | PB0 | Unused | — |
+| 6 | PB1 | Unused | — |
+| 7 | PB2 / INT0 | Shelly data | The Shelly communication needs edge-triggered interrupt handling; PB2 provides INT0 on the ATtiny85. |
+| 8 | VCC | Power | Powered from the Shelly Add On supply. |
+
+### ATtiny412 pin assignment
+
+The table uses the physical pin numbers of the 8-pin ATtiny412 package and also lists the corresponding pin numbers on the 14-pin ATtiny814 test device.
+
+| Function | ATtiny pin | ATtiny412 physical pin | ATtiny814 physical pin | Why this pin is used |
+|---|---|---:|---:|---|
+| Supply | VDD | 1 | 1 | Powered from the Shelly Add On supply. |
+| UPDI / RESET | PA0 | 6 | 10 | Reserved for UPDI programming and reset. |
+| Shelly data | PA2 | 5 | 12 | Supports the pin-change interrupt used to detect both edges of the Shelly request. |
+| DHT sensor data | PA1 | 4 | 11 | General-purpose GPIO for the real DHT data line. |
+| Reserved | PA3 | 7 | 13 | Kept available for possible future DHT power control. |
+| Unused | PA6 / PA7 | 2 / 3 | 4 / 5 | Left available. |
+| Debug UART TX | — | — | 7 (PB2 / USART0 TX) | Temporary ATtiny814 diagnostic output. |
+| Debug UART RX | — | — | 6 (PB3 / USART0 RX) | Add a pull-up to VDD; RX is not used by the firmware. |
+| Ground | GND | 8 | 14 | Common ground for the microcontroller, Shelly Add On, and sensor. |
+
+The ATtiny814 build provides temporary USART0 diagnostics at 115200 baud, 8N1, on PB2/TX. The output reports startup/heartbeat status and DHT results, received bytes, checksums, failures, and measured pulse durations. This debug functionality is only enabled for the ATtiny814; it is not available in the ATtiny412 or ATtiny85 builds. Keep USART0 on its default pin route; the alternate TX pin conflicts with the Shelly and DHT signals.
+
 ### Technical restrictions
 - The microcontroller can be powered from the Shelly Add On as the DHT sensor is. The Shelly Add On provides 3,3V and a maximum of 15mA. The DHT22 draws about 1-2mA. The microcontroller shouldn't draw more than 5mA to safely stay below the limit.
-- The microcontroller can be an ATtiny85 or one of the new ATtiny 1 series with 8 Pins.
-- The development was done with VS Code and PlatformIO using the `atmelavr` platform and the `arduino` framework for ATtiny85 (`atmelmegaavr` platform for the ATtiny 1 series devices).
-- The DHT line protocol has strict timing restrictions which require the ATtiny to run with a clock speed of at least 8MHz to met them.
+- The microcontroller can be an ATtiny85 or an ATtiny 1 series device with 8 pins (the ATtiny412 is the production target; the ATtiny814 is used for testing).
+- The development uses VS Code and PlatformIO with the `atmelavr` platform for ATtiny85 and `atmelmegaavr` for ATtiny 1 devices.
+- The DHT line protocol has strict timing restrictions and requires a clock speed of at least 8 MHz. At 3.3 V, the ATtiny 1 series supports up to 10 MHz, so these targets use 8 MHz. The ATtiny 1 OSCCFG fuse must be set to select the 16 MHz oscillator; the core then applies its divide-by-two clock prescaler.
+- DHT pulse widths are measured directly from hardware timer counters: Timer0 on the ATtiny85 and TCA0 on the ATtiny412/814. On the ATtiny1 targets, TCA0 is taken over for sensor and Shelly-trigger timing while `millis()` remains on TCD0.
