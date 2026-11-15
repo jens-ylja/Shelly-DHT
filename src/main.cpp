@@ -29,15 +29,18 @@ void loop() {
 
   const uint32_t now = millis();
   debugHeartbeat(now);
-  if (now - lastDhtAttemptMs < DHT_READ_INTERVAL_MS ||
-      !dhtSimulatorClaimReadWindow(now)) return;
+  if (now - lastDhtAttemptMs < DHT_READ_INTERVAL_MS || !dhtSimulatorClaimReadWindow(now)) {
+    return;
+  }
 
   lastDhtAttemptMs = now;
   int16_t temp10;
   uint16_t hum10;
   const DhtResult result = dhtRead(temp10, hum10, dhtSimulatorCollision());
 
-  if (dhtSimulatorTakeCollision() || result == DHT_CANCELLED) return;
+  if (dhtSimulatorTakeCollision() || result == DHT_CANCELLED) {
+    return;
+  }
 
   if (result == DHT_OK) {
     consecutiveFailures = 0;
@@ -47,9 +50,13 @@ void loop() {
   }
 
   lastFailure = result;
-  if (consecutiveFailures < 65535) ++consecutiveFailures;
+  if (consecutiveFailures < 65535) {
+    ++consecutiveFailures;
+  }
   debugDhtResult(result, consecutiveFailures);
-  if (consecutiveFailures <= DHT_MAX_FAILED_INTERVALS) return;
+  if (consecutiveFailures <= DHT_MAX_FAILED_INTERVALS) {
+    return;
+  }
 
   switch (lastFailure) {
     case DHT_TIMEOUT:

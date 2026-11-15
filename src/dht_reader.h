@@ -20,5 +20,4 @@ extern DhtDebug dhtDebug;
 #endif
 
 void dhtReaderInit();
-DhtResult dhtRead(int16_t &temp10, uint16_t &hum10,
-                  const volatile bool &cancel);
+DhtResult dhtRead(int16_t &temp10, uint16_t &hum10, const volatile bool &cancel);

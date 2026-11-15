@@ -32,17 +32,22 @@ static volatile uint32_t lowStartMs = 0;
 static uint8_t frame[5];
 
 static void buildFrame(int16_t temp, uint16_t rh, uint8_t output[5]) {
-  if (temp < -400 || temp > 800) temp = DHT_INVALID_TEMP10;
-  if (rh > 1000) rh = DHT_INVALID_HUM10;
+  if (temp < -400 || temp > 800) {
+    temp = DHT_INVALID_TEMP10;
+  }
+  if (rh > 1000) {
+    rh = DHT_INVALID_HUM10;
+  }
 
   output[0] = static_cast<uint8_t>(rh >> 8);
   output[1] = static_cast<uint8_t>(rh);
 
   const bool negative = temp < 0;
-  const uint16_t absoluteTemp = negative ? static_cast<uint16_t>(-temp)
-    : static_cast<uint16_t>(temp);
+  const uint16_t absoluteTemp = negative ? static_cast<uint16_t>(-temp) : static_cast<uint16_t>(temp);
   output[2] = static_cast<uint8_t>(absoluteTemp >> 8);
-  if (negative) output[2] |= 0x80;
+  if (negative) {
+    output[2] |= 0x80;
+  }
   output[3] = static_cast<uint8_t>(absoluteTemp);
   output[4] = static_cast<uint8_t>(output[0] + output[1] + output[2] + output[3]);
 }
@@ -111,8 +116,9 @@ ISR(SHELLY_ISR_VECTOR) {
   const uint32_t lowEndMs = millis();
   const uint32_t elapsedMs = lowEndMs - lowStartMs;
   const uint32_t lowDuration = hwShellyElapsed(lowStartTicks, lowEndTicks);
-  if (elapsedMs <= DHT_TRIGGER_MAX_US / 1000UL + 1UL &&
-      lowDuration >= DHT_TRIGGER_MIN_US && lowDuration <= DHT_TRIGGER_MAX_US) {
+  if (elapsedMs <= DHT_TRIGGER_MAX_US / 1000UL + 1UL
+      && lowDuration >= DHT_TRIGGER_MIN_US
+      && lowDuration <= DHT_TRIGGER_MAX_US) {
     sendResponse();
     lastTriggerMs = lowEndMs;
     shellySeen = true;
@@ -136,9 +142,10 @@ bool dhtSimulatorClaimReadWindow(uint32_t nowMs) {
   bool inReadWindow = !shellySeen || sinceShellyMs >= DHT_READ_INTERVAL_MS;
   if (shellySeen && !inReadWindow) {
     uint32_t phaseMs = sinceShellyMs;
-    while (phaseMs >= DHT_SHELLY_GRID_MS) phaseMs -= DHT_SHELLY_GRID_MS;
-    inReadWindow = phaseMs >= DHT_READ_WINDOW_START_MS &&
-      phaseMs <= DHT_READ_WINDOW_END_MS;
+    while (phaseMs >= DHT_SHELLY_GRID_MS) {
+      phaseMs -= DHT_SHELLY_GRID_MS;
+    }
+    inReadWindow = phaseMs >= DHT_READ_WINDOW_START_MS && phaseMs <= DHT_READ_WINDOW_END_MS;
   }
   const bool ready = !shellyBusy && inReadWindow;
   if (ready) {
@@ -148,7 +155,7 @@ bool dhtSimulatorClaimReadWindow(uint32_t nowMs) {
   return ready;
 }
 
-const volatile bool &dhtSimulatorCollision() {
+const volatile bool& dhtSimulatorCollision() {
   return shellyCollision;
 }
 

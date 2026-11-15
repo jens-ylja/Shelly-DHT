@@ -179,7 +179,6 @@ static inline uint32_t hwShellyElapsed(ShellyClock start, ShellyClock end) {
   return static_cast<uint16_t>(end - start);
 }
 
-
 #else
 #error "Unsupported microcontroller"
 #endif
